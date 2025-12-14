@@ -1,340 +1,702 @@
-using UnityEngine;
+﻿using UnityEngine;
+using System.Collections.Generic;
 
-public class Run : MonoBehaviour
+public class PlayerController : MonoBehaviour
 {
-    [Header("Movement Settings")]
+    [Header("Настройки движения")]
     public float walkSpeed = 5f;
     public float runSpeed = 8f;
-    public float jumpHeight = 1.5f;
-    public float gravity = -9.81f;
+    public float jumpForce = 1.5f;
+    public float gravity = -15f;
+    public float crouchSpeed = 2.5f;
+    public float crouchHeight = 1f;
+    private float originalHeight;
+    private bool isCrouching = false;
+    private Vector3 originalCameraPosition;
+    private Vector3 originalCenter;
 
-    [Header("Camera Settings")]
-    public Transform cameraTransform;
-    public float cameraSmoothness = 10f;
-    public Vector3 cameraOffset = new Vector3(0, 2, -5);
+    [Header("Настройки камеры")]
     public float mouseSensitivity = 2f;
 
-    [Header("Pickup Settings")]
-    public Transform holdPosition; // Позиция где будет держаться предмет
-    public float pickupRange = 3f; // Дистанция поднятия
-    public float rotationSpeed = 5f; // Скорость вращения предмета
-    public LayerMask pickupLayer; // Слой для предметов которые можно поднять
+    [Header("Настройки поднятия предметов")]
+    public float pickupRange = 5f;
+    public float throwForce = 10f;
+    public float rotateSensitivity = 1.5f;
+    public Vector3 holdOffset = new Vector3(0, -0.1f, 1f);
 
-    [Header("Components")]
-    public CharacterController characterController;
-    public Animator animator;
+    [Header("Настройки подсветки")]
+    public Color outlineColor = Color.yellow;
+    public float outlineWidth = 0.05f;
 
-    private Vector3 movement;
-    private Vector3 velocity;
-    private float horizontalInput;
-    private float verticalInput;
-    private float mouseX;
-    private float mouseY;
+    [Header("Здоровье и стамина")]
+    public float maxHealth = 100f;
+    public float maxStamina = 100f;
+
+    // Компоненты
+    private CharacterController controller;
+    private Camera playerCamera;
+    private Transform cameraTransform;
+    private Transform holdPosition;
+
+    // Переменные камеры
     private float cameraPitch = 0f;
+    private float cameraYaw = 0f;
+    private bool isCameraLocked = false;
+
+    // Переменные движения
+    private Vector3 velocity;
     private bool isGrounded;
-    private bool isRunning;
+    private bool isMoving = false;
 
-    [Header("Ground Check")]
-    public Transform groundCheck;
-    public float groundDistance = 0.4f;
-    public LayerMask groundMask;
-
-    // Переменные для системы поднятия предметов
+    // Поднятие предметов
     private GameObject heldObject;
     private Rigidbody heldObjectRb;
-    private bool isHoldingItem = false;
-    private float holdDistance = 2f; // Дистанция от камеры до предмета
+    private bool isHolding = false;
+    private float objectRotationX = 0f;
+    private float objectRotationY = 0f;
+
+    // Подсветка предметов
+    private GameObject highlightedObject;
+    private List<Material> originalMaterials = new List<Material>();
+    private bool isOutlineApplied = false;
+
+    // Статистика
+    private float health;
+    private float stamina;
+
+    // Для отображения UI
+    private bool showUI = true;
+    private string interactMessage = "";
 
     void Start()
     {
-        if (characterController == null)
-            characterController = GetComponent<CharacterController>();
-        if (animator == null)
-            animator = GetComponent<Animator>();
-        if (cameraTransform == null)
-            cameraTransform = Camera.main.transform;
+        Debug.Log("=== ИНИЦИАЛИЗАЦИЯ ИГРОКА ===");
 
-        // Создаем точку удержания предмета если не задана
-        if (holdPosition == null)
+        // CharacterController
+        controller = GetComponent<CharacterController>();
+        if (controller == null)
         {
-            GameObject holdPoint = new GameObject("HoldPosition");
-            holdPoint.transform.SetParent(cameraTransform);
-            holdPoint.transform.localPosition = new Vector3(0, 0, 2f); // На расстоянии 2 метра перед камерой
-            holdPosition = holdPoint.transform;
+            controller = gameObject.AddComponent<CharacterController>();
+            controller.height = 2f;
+            controller.radius = 0.3f;
+            controller.center = new Vector3(0, 1f, 0);
         }
 
-        if (groundCheck == null)
+        originalHeight = controller.height;
+        originalCenter = controller.center;
+
+        // Устанавливаем позицию персонажа как в координатах
+        transform.position = new Vector3(0.1711886f, 0.46f, 0.00840497f);
+        Debug.Log($"Позиция персонажа установлена: {transform.position}");
+
+        // Камера
+        playerCamera = GetComponentInChildren<Camera>();
+        if (playerCamera == null)
         {
-            GameObject gc = new GameObject("GroundCheck");
-            gc.transform.SetParent(transform);
-            gc.transform.localPosition = new Vector3(0, -1f, 0);
-            groundCheck = gc.transform;
+            playerCamera = Camera.main;
+            if (playerCamera == null)
+            {
+                GameObject camObj = new GameObject("PlayerCamera");
+                camObj.transform.SetParent(transform);
+                playerCamera = camObj.AddComponent<Camera>();
+                camObj.AddComponent<AudioListener>();
+            }
+            else
+            {
+                playerCamera.transform.SetParent(transform);
+            }
         }
 
+        // Позиционируем камеру
+        playerCamera.transform.localPosition = new Vector3(0, 0.5f, 0);
+        originalCameraPosition = playerCamera.transform.localPosition;
+        playerCamera.transform.localRotation = Quaternion.identity;
+        cameraTransform = playerCamera.transform;
+
+        // Создаём позицию для удержания предметов
+        GameObject holdPos = new GameObject("HoldPosition");
+        holdPos.transform.SetParent(cameraTransform);
+        holdPos.transform.localPosition = holdOffset;
+        holdPos.transform.localRotation = Quaternion.identity;
+        holdPosition = holdPos.transform;
+
+        // Инициализируем значения
+        health = maxHealth;
+        stamina = maxStamina;
+
+        // Настраиваем курсор
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+
+        Debug.Log("Готово! Управление:");
+        Debug.Log("WASD - движение");
+        Debug.Log("Shift - БЕЖАТЬ (тратит стамину)");
+        Debug.Log("Ctrl - присесть");
+        Debug.Log("Space - прыжок (маленький)");
+        Debug.Log("E - взять/бросить предмет");
+        Debug.Log("ПКМ - вращать предмет");
+        Debug.Log("H - тестово нанести 10 урона");
+        Debug.Log("F1 - скрыть/показать здоровье и стамину");
     }
 
     void Update()
     {
-        GetInput();
-        HandleCameraRotation();
-        HandleGravityAndJump();
         HandleMovement();
-        UpdateAnimations();
-        HandlePickup();
+        HandleCrouch();
+        HandleStamina();
+        HandlePickupSystem();
+        CheckFalling();
 
-        // Если держим предмет, обрабатываем вращение
-        if (isHoldingItem)
+        if (!isCameraLocked)
         {
-            HandleObjectRotation();
+            HandleCamera();
         }
-    }
-
-    void GetInput()
-    {
-        horizontalInput = Input.GetAxis("Horizontal");
-        verticalInput = Input.GetAxis("Vertical");
-        mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
-        mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
-        isRunning = Input.GetKey(KeyCode.LeftShift);
-    }
-
-    void HandlePickup()
-    {
-        // Поднять/отпустить предмет по нажатию E
-        if (Input.GetKeyDown(KeyCode.E))
+        else
         {
-            if (!isHoldingItem)
-            {
-                TryPickupObject();
-            }
-            else
-            {
-                DropObject();
-            }
-        }
-    }
-
-    void TryPickupObject()
-    {
-        RaycastHit hit;
-        if (Physics.Raycast(cameraTransform.position, cameraTransform.forward, out hit, pickupRange))
-        {
-            // Проверяем есть ли у объекта Rigidbody
-            Rigidbody rb = hit.collider.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                PickupObject(hit.collider.gameObject);
-            }
-        }
-    }
-
-    void PickupObject(GameObject objToPickup)
-    {
-        isHoldingItem = true;
-        heldObject = objToPickup;
-        heldObjectRb = heldObject.GetComponent<Rigidbody>();
-
-        if (heldObjectRb != null)
-        {
-            heldObjectRb.useGravity = false;
-            heldObjectRb.linearDamping = 10f;
-            heldObjectRb.angularDamping = 10f;
-            heldObjectRb.constraints = RigidbodyConstraints.FreezeRotation;
-        }
-
-        // Отключаем коллайдер или делаем его триггером
-        Collider collider = heldObject.GetComponent<Collider>();
-        if (collider != null)
-        {
-            collider.isTrigger = true;
-        }
-
-        // Отключаем возможность двигаться пока держим предмет (опционально)
-        // walkSpeed = 0f;
-        // runSpeed = 0f;
-
-        Debug.Log("Поднял предмет: " + heldObject.name);
-    }
-
-    void DropObject()
-    {
-        if (heldObject == null) return;
-
-        if (heldObjectRb != null)
-        {
-            heldObjectRb.useGravity = true;
-            heldObjectRb.linearDamping = 1f;
-            heldObjectRb.angularDamping = 0.5f;
-            heldObjectRb.constraints = RigidbodyConstraints.None;
-
-            // Добавляем небольшую силу вперед при бросании
-            heldObjectRb.AddForce(cameraTransform.forward * 2f, ForceMode.Impulse);
-        }
-
-        // Восстанавливаем коллайдер
-        Collider collider = heldObject.GetComponent<Collider>();
-        if (collider != null)
-        {
-            collider.isTrigger = false;
-        }
-
-        // Восстанавливаем скорость движения
-        // walkSpeed = 5f;
-        // runSpeed = 8f;
-
-        Debug.Log("Выбросил предмет: " + heldObject.name);
-
-        isHoldingItem = false;
-        heldObject = null;
-        heldObjectRb = null;
-    }
-
-    void HandleObjectRotation()
-    {
-        if (heldObject == null) return;
-
-        // Двигаем предмет к позиции удержания
-        Vector3 targetPosition = holdPosition.position; // Используем позицию holdPosition
-
-        // Плавное движение предмета
-        if (heldObjectRb != null)
-        {
-            Vector3 direction = targetPosition - heldObject.transform.position;
-            heldObjectRb.linearVelocity = direction * 10f;
-
-            // Вращение предмета при зажатой правой кнопке мыши
             if (Input.GetMouseButton(1))
             {
-                float rotateX = Input.GetAxis("Mouse X") * rotationSpeed * 100f;
-                float rotateY = Input.GetAxis("Mouse Y") * rotationSpeed * 100f;
-
-                heldObject.transform.Rotate(cameraTransform.up, -rotateX, Space.World);
-                heldObject.transform.Rotate(cameraTransform.right, rotateY, Space.World);
+                HandleObjectRotation();
             }
         }
 
-        // Изменение дистанции удержания колесиком мыши
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
-        if (scroll != 0)
+        if (Input.GetKeyDown(KeyCode.H))
         {
-            // Меняем позицию holdPosition
-            Vector3 localPos = holdPosition.localPosition;
-            localPos.z = Mathf.Clamp(localPos.z + scroll * 3f, 1f, 5f);
-            holdPosition.localPosition = localPos;
+            TakeDamage(10f);
+            Debug.Log("Нанесён тестовый урон 10 HP! Здоровье: " + health);
+        }
+
+        if (Input.GetKeyDown(KeyCode.F1))
+        {
+            showUI = !showUI;
+            Debug.Log("Здоровье и стамина " + (showUI ? "показаны" : "скрыты"));
         }
     }
 
-    void HandleCameraRotation()
+    void OnGUI()
     {
-        // Если держим предмет и зажата правая кнопка - только предмет вращается, не камера
-        if (!isHoldingItem || !Input.GetMouseButton(1))
-        {
-            // Поворот персонажа по горизонтали
-            transform.Rotate(Vector3.up * mouseX);
+        if (!showUI) return;
 
-            // Вертикальный наклон камеры
-            cameraPitch -= mouseY;
-            cameraPitch = Mathf.Clamp(cameraPitch, -80f, 80f);
+        GUIStyle healthStyle = new GUIStyle(GUI.skin.label);
+        healthStyle.fontSize = 16;
+        healthStyle.normal.textColor = Color.red;
+        healthStyle.fontStyle = FontStyle.Bold;
+
+        GUIStyle staminaStyle = new GUIStyle(GUI.skin.label);
+        staminaStyle.fontSize = 16;
+        staminaStyle.normal.textColor = Color.green;
+        staminaStyle.fontStyle = FontStyle.Bold;
+
+        GUIStyle interactStyle = new GUIStyle(GUI.skin.label);
+        interactStyle.fontSize = 14;
+        interactStyle.normal.textColor = Color.yellow;
+        interactStyle.alignment = TextAnchor.MiddleCenter;
+
+        GUIStyle crouchStyle = new GUIStyle(GUI.skin.label);
+        crouchStyle.fontSize = 12;
+        crouchStyle.normal.textColor = Color.cyan;
+        crouchStyle.fontStyle = FontStyle.Bold;
+
+        GUI.Label(new Rect(10, 10, 300, 25), "❤ Здоровье: " + Mathf.RoundToInt(health) + "/" + maxHealth, healthStyle);
+
+        Color staminaColor = stamina < 30f ? Color.red : (stamina < 60f ? Color.yellow : Color.green);
+        staminaStyle.normal.textColor = staminaColor;
+        GUI.Label(new Rect(10, 35, 300, 25), "⚡ Стамина: " + Mathf.RoundToInt(stamina) + "/" + maxStamina, staminaStyle);
+
+        if (!string.IsNullOrEmpty(interactMessage))
+        {
+            GUI.Label(new Rect(Screen.width / 2 - 200, Screen.height - 80, 400, 30), interactMessage, interactStyle);
+        }
+
+        if (isCrouching)
+        {
+            GUI.Label(new Rect(10, 60, 400, 20), "Приседание (отпустите Ctrl чтобы встать)", crouchStyle);
         }
     }
 
-    void HandleGravityAndJump()
+    void HandleCamera()
     {
-        // ВАЖНО: Character Controller имеет свою гравитацию
-        // Мы используем isGrounded от CharacterController
+        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
+        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
 
-        isGrounded = characterController.isGrounded;
+        cameraYaw += mouseX;
+        transform.rotation = Quaternion.Euler(0, cameraYaw, 0);
 
-        // Дополнительная проверка сферой (опционально)
-        if (!isGrounded)
-        {
-            isGrounded = Physics.CheckSphere(groundCheck.position, groundDistance, groundMask);
-        }
+        cameraPitch -= mouseY;
+        cameraPitch = Mathf.Clamp(cameraPitch, -90f, 90f);
 
-        // Если на земле и скорость вниз, обнуляем вертикальную скорость
+        cameraTransform.localEulerAngles = new Vector3(cameraPitch, 0f, 0f);
+    }
+
+    void HandleMovement()
+    {
+        isGrounded = controller.isGrounded;
+
         if (isGrounded && velocity.y < 0)
         {
             velocity.y = -2f;
         }
 
-        // Прыжок при нажатии пробела и если на земле
-        if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
+        // Прыжок
+        if (Input.GetKeyDown(KeyCode.Space) && isGrounded && stamina > 5f && !isCrouching)
         {
-            // Формула для прыжка: v = √(h * -2 * g)
-            velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            velocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
+            stamina -= 5f;
         }
 
-        // Применяем гравитацию К Character Controller
+        // Гравитация
         velocity.y += gravity * Time.deltaTime;
-    }
 
-    void HandleMovement()
-    {
-        // Получаем направление движения относительно камеры
-        Vector3 camForward = cameraTransform.forward;
-        Vector3 camRight = cameraTransform.right;
-        camForward.y = 0;
-        camRight.y = 0;
-        camForward.Normalize();
-        camRight.Normalize();
+        // Проверяем движение
+        Vector3 move = Vector3.zero;
+        isMoving = false;
 
-        // Рассчитываем движение
-        movement = (camForward * verticalInput + camRight * horizontalInput);
-        movement = Vector3.ClampMagnitude(movement, 1f);
+        if (Input.GetKey(KeyCode.W)) { move += transform.forward; isMoving = true; }
+        if (Input.GetKey(KeyCode.S)) { move -= transform.forward; isMoving = true; }
+        if (Input.GetKey(KeyCode.A)) { move -= transform.right; isMoving = true; }
+        if (Input.GetKey(KeyCode.D)) { move += transform.right; isMoving = true; }
 
-        // Применяем скорость
-        float currentSpeed = isRunning ? runSpeed : walkSpeed;
-        Vector3 moveVelocity = movement * currentSpeed;
-
-        // Добавляем вертикальную скорость (для прыжка и гравитации)
-        moveVelocity.y = velocity.y;
-
-        // Двигаем CharacterController
-        characterController.Move(moveVelocity * Time.deltaTime);
-    }
-
-    void LateUpdate()
-    {
-        // Плавная камера
-        Vector3 targetPos = transform.position + transform.TransformDirection(cameraOffset);
-        cameraTransform.position = Vector3.Lerp(cameraTransform.position, targetPos, cameraSmoothness * Time.deltaTime);
-
-        // Поворот камеры
-        cameraTransform.rotation = Quaternion.Euler(cameraPitch, transform.eulerAngles.y, 0);
-    }
-
-    void UpdateAnimations()
-    {
-        if (animator != null)
+        if (move.magnitude > 0.1f)
         {
-            float speed = movement.magnitude;
-            if (isRunning && speed > 0) speed *= 2f;
+            move.Normalize();
 
-            animator.SetFloat("Speed", speed);
-            animator.SetBool("IsGrounded", isGrounded);
-            animator.SetBool("IsRunning", isRunning);
-            animator.SetFloat("VerticalVelocity", velocity.y);
+            float speed;
+            if (isCrouching)
+            {
+                speed = crouchSpeed;
+            }
+            else
+            {
+                // МОЖНО БЕЖАТЬ ТОЛЬКО ЕСЛИ ЕСТЬ СТАМИНА
+                bool canRun = Input.GetKey(KeyCode.LeftShift) && stamina > 0;
+                speed = canRun ? runSpeed : walkSpeed;
 
-            // Анимация для удержания предмета
-            animator.SetBool("IsHoldingItem", isHoldingItem);
+                // Если пытаемся бежать без стамины - пишем в лог
+                if (Input.GetKey(KeyCode.LeftShift) && stamina <= 0)
+                {
+                    Debug.Log("Не могу бежать! Стамина на нуле");
+                }
+            }
+
+            controller.Move(move * speed * Time.deltaTime);
+        }
+        else
+        {
+            isMoving = false;
+        }
+
+        controller.Move(velocity * Time.deltaTime);
+    }
+
+    void HandleCrouch()
+    {
+        bool shouldCrouch = Input.GetKey(KeyCode.LeftControl);
+
+        if (shouldCrouch && !isCrouching)
+        {
+            isCrouching = true;
+
+            Vector3 currentPosition = transform.position;
+
+            controller.height = crouchHeight;
+            controller.center = new Vector3(0, crouchHeight / 2f, 0);
+
+            controller.enabled = false;
+            transform.position = currentPosition;
+            controller.enabled = true;
+
+            cameraTransform.localPosition = Vector3.Lerp(
+                cameraTransform.localPosition,
+                new Vector3(0, 0.2f, 0),
+                Time.deltaTime * 10f
+            );
+        }
+        else if (!shouldCrouch && isCrouching)
+        {
+            if (!CheckCeiling())
+            {
+                isCrouching = false;
+
+                Vector3 currentPosition = transform.position;
+
+                controller.height = originalHeight;
+                controller.center = originalCenter;
+
+                controller.enabled = false;
+                transform.position = currentPosition;
+                controller.enabled = true;
+
+                cameraTransform.localPosition = Vector3.Lerp(
+                    cameraTransform.localPosition,
+                    originalCameraPosition,
+                    Time.deltaTime * 10f
+                );
+            }
+        }
+
+        if (isCrouching)
+        {
+            cameraTransform.localPosition = Vector3.Lerp(
+                cameraTransform.localPosition,
+                new Vector3(0, 0.2f, 0),
+                Time.deltaTime * 10f
+            );
+        }
+        else if (!isCrouching && !CheckCeiling())
+        {
+            cameraTransform.localPosition = Vector3.Lerp(
+                cameraTransform.localPosition,
+                originalCameraPosition,
+                Time.deltaTime * 10f
+            );
+        }
+    }
+
+    bool CheckCeiling()
+    {
+        RaycastHit hit;
+        float checkDistance = 0.5f;
+        Vector3 rayStart = transform.position + Vector3.up * (controller.height / 2f);
+
+        bool hasCeiling = Physics.Raycast(rayStart, Vector3.up, out hit, checkDistance);
+        Debug.DrawRay(rayStart, Vector3.up * checkDistance, hasCeiling ? Color.red : Color.green);
+
+        return hasCeiling;
+    }
+
+    void HandleStamina()
+    {
+        // МЕДЛЕННОЕ восстановление стамины
+        if (!Input.GetKey(KeyCode.LeftShift) && stamina < maxStamina)
+        {
+            float recoverySpeed = 6f; // Медленно восстанавливаем
+            stamina += recoverySpeed * Time.deltaTime;
+            stamina = Mathf.Min(stamina, maxStamina);
+        }
+
+        // МЕДЛЕННАЯ трата стамины при беге
+        if (Input.GetKey(KeyCode.LeftShift) && isMoving && stamina > 0)
+        {
+            float drainSpeed = 13f; //тратим при беге
+            stamina -= drainSpeed * Time.deltaTime;
+            stamina = Mathf.Max(stamina, 0);
+        }
+    }
+
+    void HandlePickupSystem()
+    {
+        if (!isHolding)
+        {
+            FindAndHighlightPickupableObject();
+
+            if (Input.GetKeyDown(KeyCode.E))
+            {
+                TryPickup();
+            }
+        }
+        else
+        {
+            if (heldObject != null)
+            {
+                heldObject.transform.position = holdPosition.position;
+
+                if (Input.GetMouseButtonDown(1))
+                {
+                    StartObjectRotation();
+                }
+
+                if (Input.GetMouseButtonUp(1))
+                {
+                    StopObjectRotation();
+                }
+
+                if (Input.GetKeyDown(KeyCode.E))
+                {
+                    ThrowObject();
+                }
+            }
+        }
+    }
+
+    void FindAndHighlightPickupableObject()
+    {
+        Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
+        RaycastHit hit;
+
+        if (Physics.Raycast(ray, out hit, pickupRange))
+        {
+            GameObject obj = hit.collider.gameObject;
+            Rigidbody rb = obj.GetComponent<Rigidbody>();
+
+            if (rb != null && !rb.isKinematic)
+            {
+                if (obj != highlightedObject)
+                {
+                    ClearHighlight();
+                    highlightedObject = obj;
+                    ApplyOutline(obj);
+                }
+
+                interactMessage = "E - Взять " + obj.name + " (расстояние: " + hit.distance.ToString("F1") + "м)";
+                Debug.DrawRay(ray.origin, ray.direction * hit.distance, Color.green);
+                return;
+            }
+        }
+
+        ClearHighlight();
+        interactMessage = "";
+        Debug.DrawRay(ray.origin, ray.direction * pickupRange, Color.red);
+    }
+
+    void ApplyOutline(GameObject obj)
+    {
+        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
+        originalMaterials.Clear();
+
+        foreach (Renderer renderer in renderers)
+        {
+            List<Material> rendererMaterials = new List<Material>();
+            foreach (Material mat in renderer.materials)
+            {
+                rendererMaterials.Add(mat);
+            }
+            originalMaterials.AddRange(rendererMaterials);
+
+            Material[] outlineMaterials = new Material[renderer.materials.Length];
+            for (int i = 0; i < renderer.materials.Length; i++)
+            {
+                Material outlineMat = new Material(Shader.Find("Standard"));
+                outlineMat.CopyPropertiesFromMaterial(renderer.materials[i]);
+                outlineMat.EnableKeyword("_EMISSION");
+                outlineMat.SetColor("_EmissionColor", outlineColor);
+                outlineMat.SetFloat("_Mode", 3);
+                outlineMat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                outlineMat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                outlineMat.SetInt("_ZWrite", 0);
+                outlineMat.DisableKeyword("_ALPHATEST_ON");
+                outlineMat.EnableKeyword("_ALPHABLEND_ON");
+                outlineMat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                outlineMat.renderQueue = 3000;
+                outlineMaterials[i] = outlineMat;
+            }
+
+            renderer.materials = outlineMaterials;
+        }
+
+        isOutlineApplied = true;
+    }
+
+    void ClearHighlight()
+    {
+        if (highlightedObject != null && isOutlineApplied)
+        {
+            Renderer[] renderers = highlightedObject.GetComponentsInChildren<Renderer>();
+
+            int materialIndex = 0;
+            foreach (Renderer renderer in renderers)
+            {
+                Material[] originalRendererMaterials = new Material[renderer.materials.Length];
+                for (int i = 0; i < renderer.materials.Length; i++)
+                {
+                    if (materialIndex < originalMaterials.Count)
+                    {
+                        originalRendererMaterials[i] = originalMaterials[materialIndex];
+                        materialIndex++;
+                    }
+                }
+                renderer.materials = originalRendererMaterials;
+            }
+
+            originalMaterials.Clear();
+            highlightedObject = null;
+            isOutlineApplied = false;
+        }
+    }
+
+    void StartObjectRotation()
+    {
+        if (isHolding && heldObject != null)
+        {
+            isCameraLocked = true;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+
+            objectRotationX = 0f;
+            objectRotationY = 0f;
+            interactMessage = "Двигайте мышью для вращения предмета | E - Бросить";
+        }
+    }
+
+    void StopObjectRotation()
+    {
+        if (isCameraLocked)
+        {
+            isCameraLocked = false;
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+
+            if (isHolding)
+            {
+                interactMessage = "E - Бросить | ПКМ - Вращать предмет";
+            }
+        }
+    }
+
+    void HandleObjectRotation()
+    {
+        if (!isHolding || heldObject == null) return;
+
+        float mouseX = Input.GetAxis("Mouse X") * rotateSensitivity;
+        float mouseY = Input.GetAxis("Mouse Y") * rotateSensitivity;
+
+        objectRotationX += mouseX;
+        objectRotationY += mouseY;
+
+        objectRotationY = Mathf.Clamp(objectRotationY, -90f, 90f);
+
+        Quaternion targetRotation = Quaternion.Euler(objectRotationY, -objectRotationX, 0f);
+        heldObject.transform.rotation = Quaternion.Lerp(heldObject.transform.rotation, targetRotation, Time.deltaTime * 5f);
+    }
+
+    void TryPickup()
+    {
+        Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
+        RaycastHit hit;
+
+        if (Physics.Raycast(ray, out hit, pickupRange))
+        {
+            GameObject obj = hit.collider.gameObject;
+            Rigidbody rb = obj.GetComponent<Rigidbody>();
+
+            if (rb == null || rb.isKinematic)
+            {
+                Debug.Log("Нельзя поднять этот предмет");
+                return;
+            }
+
+            ClearHighlight();
+
+            heldObject = obj;
+            heldObjectRb = rb;
+            isHolding = true;
+
+            heldObjectRb.isKinematic = true;
+            heldObjectRb.useGravity = false;
+            heldObjectRb.linearVelocity = Vector3.zero;
+            heldObjectRb.angularVelocity = Vector3.zero;
+
+            Collider col = heldObject.GetComponent<Collider>();
+            if (col != null) col.enabled = false;
+
+            heldObject.layer = 2;
+
+            heldObject.transform.SetParent(holdPosition);
+            heldObject.transform.localPosition = Vector3.zero;
+            heldObject.transform.localRotation = Quaternion.identity;
+
+            objectRotationX = 0f;
+            objectRotationY = 0f;
+
+            Debug.Log("Предмет поднят с расстояния: " + hit.distance.ToString("F1") + " метров");
+
+            interactMessage = "E - Бросить | ПКМ - Вращать предмет";
+        }
+        else
+        {
+            Debug.Log("Предмет слишком далеко! Максимальное расстояние: " + pickupRange + "м");
+        }
+    }
+
+    void ThrowObject()
+    {
+        if (heldObject == null) return;
+
+        if (isCameraLocked)
+        {
+            StopObjectRotation();
+        }
+
+        Collider col = heldObject.GetComponent<Collider>();
+        if (col != null) col.enabled = true;
+
+        heldObject.layer = 0;
+
+        heldObjectRb.isKinematic = false;
+        heldObjectRb.useGravity = true;
+
+        heldObject.transform.SetParent(null);
+
+        Vector3 throwDirection = cameraTransform.forward;
+        heldObjectRb.AddForce(throwDirection * throwForce, ForceMode.Impulse);
+
+        heldObjectRb.angularVelocity = new Vector3(
+            Mathf.Deg2Rad * objectRotationY * 0.2f,
+            Mathf.Deg2Rad * -objectRotationX * 0.2f,
+            0
+        );
+
+        heldObject = null;
+        heldObjectRb = null;
+        isHolding = false;
+        interactMessage = "";
+    }
+
+    void CheckFalling()
+    {
+        if (transform.position.y < -20f)
+        {
+            controller.enabled = false;
+            transform.position = new Vector3(0.1711886f, 0.46f, 0.00840497f);
+            velocity = Vector3.zero;
+            controller.enabled = true;
+            TakeDamage(20f);
+        }
+    }
+
+    public void TakeDamage(float damage)
+    {
+        health -= damage;
+        health = Mathf.Max(health, 0f);
+
+        if (health <= 0)
+        {
+            Respawn();
+        }
+    }
+
+    void Respawn()
+    {
+        controller.enabled = false;
+        transform.position = new Vector3(0.1711886f, 0.46f, 0.00840497f);
+        velocity = Vector3.zero;
+        controller.enabled = true;
+        health = maxHealth;
+        stamina = maxStamina;
+        Debug.Log("Игрок возрождён! Здоровье и стамина восстановлены.");
+
+        if (isCrouching)
+        {
+            isCrouching = false;
+            controller.height = originalHeight;
+            controller.center = originalCenter;
+            cameraTransform.localPosition = originalCameraPosition;
         }
     }
 
     void OnDrawGizmosSelected()
     {
-        if (groundCheck != null)
-        {
-            Gizmos.color = isGrounded ? Color.green : Color.red;
-            Gizmos.DrawWireSphere(groundCheck.position, groundDistance);
-        }
-
-        // Визуализация луча для поднятия предметов
         if (cameraTransform != null)
         {
-            Gizmos.color = Color.yellow;
+            Gizmos.color = Color.blue;
             Gizmos.DrawRay(cameraTransform.position, cameraTransform.forward * pickupRange);
+
+            Gizmos.color = new Color(0, 0, 1, 0.1f);
+            Gizmos.DrawWireSphere(cameraTransform.position + cameraTransform.forward * (pickupRange / 2f), pickupRange / 2f);
+
+            if (holdPosition != null)
+            {
+                Gizmos.color = Color.green;
+                Gizmos.DrawWireSphere(holdPosition.position, 0.1f);
+            }
         }
     }
 }
