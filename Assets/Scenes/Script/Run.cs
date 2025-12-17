@@ -31,6 +31,9 @@ public class PlayerController : MonoBehaviour
     [Header("Здоровье и стамина")]
     public float maxHealth = 100f;
     public float maxStamina = 100f;
+    
+    [Header("Точка респавна")]
+    public Transform respawnPoint; // Добавляем ссылку на точку респавна
 
     // Компоненты
     private CharacterController controller;
@@ -67,10 +70,17 @@ public class PlayerController : MonoBehaviour
     // Для отображения UI
     private bool showUI = true;
     private string interactMessage = "";
+    
+    // Для сохранения стартовой позиции
+    private Vector3 initialPosition;
 
     void Start()
     {
         Debug.Log("=== ИНИЦИАЛИЗАЦИЯ ИГРОКА ===");
+
+        // Сохраняем начальную позицию объекта из иерархии сцены
+        initialPosition = transform.position;
+        Debug.Log($"Начальная позиция персонажа: {initialPosition}");
 
         // CharacterController
         controller = GetComponent<CharacterController>();
@@ -84,10 +94,6 @@ public class PlayerController : MonoBehaviour
 
         originalHeight = controller.height;
         originalCenter = controller.center;
-
-        // Устанавливаем позицию персонажа как в координатах
-        transform.position = new Vector3(0.1711886f, 0.46f, 0.00840497f);
-        Debug.Log($"Позиция персонажа установлена: {transform.position}");
 
         // Камера
         playerCamera = GetComponentInChildren<Camera>();
@@ -644,11 +650,7 @@ public class PlayerController : MonoBehaviour
     {
         if (transform.position.y < -20f)
         {
-            controller.enabled = false;
-            transform.position = new Vector3(0.1711886f, 0.46f, 0.00840497f);
-            velocity = Vector3.zero;
-            controller.enabled = true;
-            TakeDamage(20f);
+            Respawn();
         }
     }
 
@@ -666,7 +668,19 @@ public class PlayerController : MonoBehaviour
     void Respawn()
     {
         controller.enabled = false;
-        transform.position = new Vector3(0.1711886f, 0.46f, 0.00840497f);
+        
+        // Используем точку респавна если задана, иначе начальную позицию
+        if (respawnPoint != null)
+        {
+            transform.position = respawnPoint.position;
+            Debug.Log($"Возрождение в точке респавна: {respawnPoint.position}");
+        }
+        else
+        {
+            transform.position = initialPosition;
+            Debug.Log($"Возрождение в начальной позиции: {initialPosition}");
+        }
+        
         velocity = Vector3.zero;
         controller.enabled = true;
         health = maxHealth;
