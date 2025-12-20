@@ -271,7 +271,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: f07c5f82ef40fe6418e9d678e2b9ebad, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 962467292}
   m_SourcePrefab: {fileID: 100100000, guid: f07c5f82ef40fe6418e9d678e2b9ebad, type: 3}
 --- !u!1001 &410118102
 PrefabInstance:
@@ -405,8 +408,38 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0d03ebdf4d3b92f4d8a65dfd9c2b838c, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 491982909}
   m_SourcePrefab: {fileID: 100100000, guid: 0d03ebdf4d3b92f4d8a65dfd9c2b838c, type: 3}
+--- !u!1 &491982905 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 0d03ebdf4d3b92f4d8a65dfd9c2b838c, type: 3}
+  m_PrefabInstance: {fileID: 415143404}
+  m_PrefabAsset: {fileID: 0}
+--- !u!64 &491982909
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 491982905}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 0
+  m_CookingOptions: 30
+  m_Mesh: {fileID: -1359847996992131929, guid: 0d03ebdf4d3b92f4d8a65dfd9c2b838c, type: 3}
 --- !u!1 &498866727
 GameObject:
   m_ObjectHideFlags: 0
@@ -973,6 +1006,33 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: fd5cfa3391969c3449f8e899cbcc1c07, type: 3}
+--- !u!1 &962467288 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: f07c5f82ef40fe6418e9d678e2b9ebad, type: 3}
+  m_PrefabInstance: {fileID: 82567271}
+  m_PrefabAsset: {fileID: 0}
+--- !u!64 &962467292
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 962467288}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 0
+  m_CookingOptions: 30
+  m_Mesh: {fileID: -6462931861171919663, guid: f07c5f82ef40fe6418e9d678e2b9ebad, type: 3}
 --- !u!1 &1028878994
 GameObject:
   m_ObjectHideFlags: 0
@@ -1303,7 +1363,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0922ca64b609473438355541026963f3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
-  nextSceneName: lvl3
+  nextSceneName: game
   triggerColor: {r: 1, g: 1, b: 1, a: 0}
   checkDelay: 0.5
   transitionParticles: {fileID: 0}
