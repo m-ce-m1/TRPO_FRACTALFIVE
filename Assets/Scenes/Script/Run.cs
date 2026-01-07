@@ -374,7 +374,7 @@ public class PlayerController : MonoBehaviour
         // МЕДЛЕННОЕ восстановление стамины
         if (!Input.GetKey(KeyCode.LeftShift) && stamina < maxStamina)
         {
-            float recoverySpeed = 6f; // Медленно восстанавливаем
+            float recoverySpeed = 4f; // Медленно восстанавливаем
             stamina += recoverySpeed * Time.deltaTime;
             stamina = Mathf.Min(stamina, maxStamina);
         }
@@ -382,7 +382,7 @@ public class PlayerController : MonoBehaviour
         // МЕДЛЕННАЯ трата стамины при беге
         if (Input.GetKey(KeyCode.LeftShift) && isMoving && stamina > 0)
         {
-            float drainSpeed = 13f; //тратим при беге
+            float drainSpeed = 15f; //тратим при беге
             stamina -= drainSpeed * Time.deltaTime;
             stamina = Mathf.Max(stamina, 0);
         }
